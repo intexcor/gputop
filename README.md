@@ -23,9 +23,11 @@ pip install git+https://github.com/intexcor/gputop.git
 gputop
 ```
 
-Run ```sh
+Run 
+```sh
 gputop --help
-```  to get more information
+```
+to get more information
 ![image](https://github.com/user-attachments/assets/a3eca25c-b64d-4efd-94e2-fb7b3ca1e313)
 
 
