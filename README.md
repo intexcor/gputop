@@ -16,6 +16,16 @@ Form source:
 pip install git+https://github.com/intexcor/gputop.git
 ```
 
+## Usage
+
+
+```sh
+gputop
+```
+
+Run ```sh
+gputop --help
+```  to get more information
 ![image](https://github.com/user-attachments/assets/a3eca25c-b64d-4efd-94e2-fb7b3ca1e313)
 
 
