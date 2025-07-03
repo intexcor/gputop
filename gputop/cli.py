@@ -19,6 +19,44 @@ console: Console = Console()
 from . import __version__, __package_name__
 
 
+def safe_float(value, default=None):
+    """
+    Safely convert value to float with fallback to default.
+
+    Args:
+        value: Value to convert
+        default: Default value if conversion fails
+
+    Returns:
+        Converted float value or default
+    """
+    try:
+        if value is None or str(value).strip().lower() in ['', 'n/a', 'na', 'null', 'none']:
+            return default
+        return float(str(value).strip())
+    except (ValueError, TypeError):
+        return default
+
+
+def safe_int(value, default=None):
+    """
+    Safely convert value to int with fallback to default.
+
+    Args:
+        value: Value to convert
+        default: Default value if conversion fails
+
+    Returns:
+        Converted int value or default
+    """
+    try:
+        if value is None or str(value).strip().lower() in ['', 'n/a', 'na', 'null', 'none']:
+            return default
+        return int(float(str(value).strip()))
+    except (ValueError, TypeError):
+        return default
+
+
 def run_cmd(cmd: str) -> Optional[str]:
     try:
         result: subprocess.CompletedProcess[str] = subprocess.run(
@@ -111,14 +149,15 @@ def parse_nvidia() -> List[Dict[str, Union[str, int, float]]]:
     rows: List[Dict[str, Union[str, int, float]]] = []
     for line in output.splitlines():
         parts: List[str] = [p.strip() for p in line.split(",")]
-        rows.append({
-            "name": parts[0],
-            "mem_used": int(parts[1]),
-            "mem_total": int(parts[2]),
-            "gpu_util": float(parts[3]),
-            "temp": float(parts[4]),
-            "power": float(parts[5])
-        })
+        if len(parts) >= 6:
+            rows.append({
+                "name": parts[0],
+                "mem_used": safe_int(parts[1], 0),
+                "mem_total": safe_int(parts[2], 0),
+                "gpu_util": safe_float(parts[3], "N/A"),
+                "temp": safe_float(parts[4], "N/A"),
+                "power": safe_float(parts[5], "N/A")
+            })
     return rows
 
 
@@ -127,18 +166,21 @@ def parse_amd() -> List[Dict[str, Union[str, int, float]]]:
     output: Optional[str] = run_cmd(cmd)
     if not output:
         return []
-    data: Dict[str, Any] = json.loads(output)
-    rows: List[Dict[str, Union[str, int, float]]] = []
-    for card, info in data.items():
-        rows.append({
-            "name": info.get("Card Series", "Unknown"),
-            "gpu_util": float(info.get("GPU use (%)", "0")),
-            "temp": float(info.get("Temperature (Sensor edge) (C)", "0")),
-            "power": float(info.get("Current Socket Graphics Package Power (W)", "0")),
-            "mem_used": int(info.get("VRAM Total Used Memory (B)", 0)) // (1024 ** 2),
-            "mem_total": int(info.get("VRAM Total Memory (B)", 0)) // (1024 ** 2)
-        })
-    return rows
+    try:
+        data: Dict[str, Any] = json.loads(output)
+        rows: List[Dict[str, Union[str, int, float]]] = []
+        for card, info in data.items():
+            rows.append({
+                "name": info.get("Card Series", "Unknown"),
+                "gpu_util": safe_float(info.get("GPU use (%)", "0"), "N/A"),
+                "temp": safe_float(info.get("Temperature (Sensor edge) (C)", "0"), "N/A"),
+                "power": safe_float(info.get("Current Socket Graphics Package Power (W)", "0"), "N/A"),
+                "mem_used": safe_int(info.get("VRAM Total Used Memory (B)", 0), 0) // (1024 ** 2),
+                "mem_total": safe_int(info.get("VRAM Total Memory (B)", 0), 0) // (1024 ** 2)
+            })
+        return rows
+    except Exception:
+        return []
 
 
 def parse_intel() -> List[Dict[str, Union[str, int, float]]]:
@@ -151,9 +193,9 @@ def parse_intel() -> List[Dict[str, Union[str, int, float]]]:
         render_busy: float = data["engines"].get("Render/3D/0", {}).get("busy", 0)
         return [{
             "name": "Intel GPU",
-            "gpu_util": int(render_busy),
-            "temp": int(data.get("temperature", 0)),
-            "power": float(data.get("power", 0)),
+            "gpu_util": safe_int(render_busy, 0),
+            "temp": safe_int(data.get("temperature", 0), 0),
+            "power": safe_float(data.get("power", 0), 0.0),
             "mem_used": 0,
             "mem_total": 0
         }]
@@ -175,7 +217,7 @@ def get_nvidia_processes() -> List[Dict[str, str]]:
         processes.append({
             "pid": pid,
             "name": name,
-            "mem": mem
+            "mem": str(safe_int(mem, 0))
         })
     return processes
 
@@ -199,7 +241,7 @@ def get_amd_processes() -> List[Dict[str, str]]:
                 parts: List[str] = [p.strip() for p in val.split(",")]
                 if len(parts) >= 3:
                     name: str = parts[0]
-                    mem_bytes: int = int(parts[2])
+                    mem_bytes: int = safe_int(parts[2], 0)
                     mem_mib: int = mem_bytes // (1024 ** 2)
                     procs.append({
                         "pid": pid,
@@ -212,8 +254,8 @@ def get_amd_processes() -> List[Dict[str, str]]:
 
 
 def create_table(
-    gpu_data: List[Dict[str, Union[str, int, float]]],
-    gpu_processes: List[Dict[str, str]]
+        gpu_data: List[Dict[str, Union[str, int, float]]],
+        gpu_processes: List[Dict[str, str]]
 ) -> Tuple[Table, Panel, Panel]:
     title: Text = Text("")
 
@@ -326,9 +368,6 @@ def main() -> None:
     except KeyboardInterrupt:
         console.clear()
         sys.exit(0)
-    except Exception as e:
-        console.print(f"[red]Error: {e}[/]")
-        sys.exit(1)
 
 
 if __name__ == "__main__":

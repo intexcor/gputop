@@ -17,6 +17,44 @@ __version__ = "0.1"
 __package_name__ = "GPUTOP"
 
 
+def safe_float(value, default=None):
+    """
+    Safely convert value to float with fallback to default.
+
+    Args:
+        value: Value to convert
+        default: Default value if conversion fails
+
+    Returns:
+        Converted float value or default
+    """
+    try:
+        if value is None or str(value).strip().lower() in ['', 'n/a', 'na', 'null', 'none']:
+            return default
+        return float(str(value).strip())
+    except (ValueError, TypeError):
+        return default
+
+
+def safe_int(value, default=None):
+    """
+    Safely convert value to int with fallback to default.
+
+    Args:
+        value: Value to convert
+        default: Default value if conversion fails
+
+    Returns:
+        Converted int value or default
+    """
+    try:
+        if value is None or str(value).strip().lower() in ['', 'n/a', 'na', 'null', 'none']:
+            return default
+        return int(float(str(value).strip()))
+    except (ValueError, TypeError):
+        return default
+
+
 def run_cmd(cmd):
     try:
         result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
@@ -31,6 +69,7 @@ def detect_tools():
         "amd": shutil.which("rocm-smi") is not None,
         "intel": shutil.which("intel_gpu_top") is not None,
     }
+
 
 def get_versions(tools):
     version_info = {
@@ -77,7 +116,6 @@ def get_versions(tools):
 
 
 def create_info_panel(versions):
-    # Здесь делаем три колонки
     table = Table.grid(expand=True)
     table.add_column(justify="left", ratio=1)
     table.add_column(justify="center", ratio=1)
@@ -96,7 +134,6 @@ def create_info_panel(versions):
     )
 
 
-# NVIDIA
 def parse_nvidia():
     cmd = (
         "nvidia-smi --query-gpu=name,memory.used,memory.total,utilization.gpu,"
@@ -108,38 +145,40 @@ def parse_nvidia():
     rows = []
     for line in output.splitlines():
         parts = [p.strip() for p in line.split(",")]
-        rows.append({
-            "name": parts[0],
-            "mem_used": int(parts[1]),
-            "mem_total": int(parts[2]),
-            "gpu_util": float(parts[3]),
-            "temp": float(parts[4]),
-            "power": float(parts[5])
-        })
+        if len(parts) >= 6:
+            rows.append({
+                "name": parts[0],
+                "mem_used": safe_int(parts[1], 0),
+                "mem_total": safe_int(parts[2], 0),
+                "gpu_util": safe_float(parts[3], 0.0),
+                "temp": safe_float(parts[4], 0.0),
+                "power": safe_float(parts[5], 0.0)
+            })
     return rows
 
 
-# AMD
 def parse_amd():
     cmd = "rocm-smi --showproductname --showuse --showtemp --showpower --showmeminfo vram --json"
     output = run_cmd(cmd)
     if not output:
         return []
-    data = json.loads(output)
-    rows = []
-    for card, info in data.items():
-        rows.append({
-            "name": info.get("Card Series", "Unknown"),
-            "gpu_util": float(info.get("GPU use (%)", "0")),
-            "temp": float(info.get("Temperature (Sensor edge) (C)", "0")),
-            "power": float(info.get("Current Socket Graphics Package Power (W)", "0")),
-            "mem_used": int(info.get("VRAM Total Used Memory (B)", 0)) // (1024 ** 2),
-            "mem_total": int(info.get("VRAM Total Memory (B)", 0)) // (1024 ** 2)
-        })
-    return rows
+    try:
+        data = json.loads(output)
+        rows = []
+        for card, info in data.items():
+            rows.append({
+                "name": info.get("Card Series", "Unknown"),
+                "gpu_util": safe_float(info.get("GPU use (%)", "0"), 0.0),
+                "temp": safe_float(info.get("Temperature (Sensor edge) (C)", "0"), 0.0),
+                "power": safe_float(info.get("Current Socket Graphics Package Power (W)", "0"), 0.0),
+                "mem_used": safe_int(info.get("VRAM Total Used Memory (B)", 0), 0) // (1024 ** 2),
+                "mem_total": safe_int(info.get("VRAM Total Memory (B)", 0), 0) // (1024 ** 2)
+            })
+        return rows
+    except Exception:
+        return []
 
 
-# Intel
 def parse_intel():
     cmd = "intel_gpu_top -J -s 500 -d 1"
     output = run_cmd(cmd)
@@ -150,9 +189,9 @@ def parse_intel():
         render_busy = data["engines"].get("Render/3D/0", {}).get("busy", 0)
         return [{
             "name": "Intel GPU",
-            "gpu_util": int(render_busy),
-            "temp": int(data.get("temperature", 0)),
-            "power": float(data.get("power", 0)),
+            "gpu_util": safe_int(render_busy, 0),
+            "temp": safe_int(data.get("temperature", 0), 0),
+            "power": safe_float(data.get("power", 0), 0.0),
             "mem_used": 0,
             "mem_total": 0
         }]
@@ -160,7 +199,6 @@ def parse_intel():
         return []
 
 
-# NVIDIA GPU Processes
 def get_nvidia_processes():
     cmd = "nvidia-smi --query-compute-apps=pid,process_name,used_memory --format=csv,noheader,nounits"
     output = run_cmd(cmd)
@@ -175,7 +213,7 @@ def get_nvidia_processes():
         processes.append({
             "pid": pid,
             "name": name,
-            "mem": mem
+            "mem": str(safe_int(mem, 0))
         })
     return processes
 
@@ -199,7 +237,7 @@ def get_amd_processes():
                 parts = [p.strip() for p in val.split(",")]
                 if len(parts) >= 3:
                     name = parts[0]
-                    mem_bytes = int(parts[2])
+                    mem_bytes = safe_int(parts[2], 0)
                     mem_mib = mem_bytes // (1024 ** 2)
                     procs.append({
                         "pid": pid,
@@ -231,16 +269,14 @@ def create_table(gpu_data, gpu_processes):
             mem_str
         )
 
-    # CPU/RAM
     cpu = psutil.cpu_percent()
     ram = psutil.virtual_memory()
     info_panel = Panel(
-        f"[cyan]CPU Load:[/] {cpu}%\n[cyan]RAM Used:[/] {ram.used//(1024**2)} MiB / {ram.total//(1024**2)} MiB",
+        f"[cyan]CPU Load:[/] {cpu}%\n[cyan]RAM Used:[/] {ram.used // (1024 ** 2)} MiB / {ram.total // (1024 ** 2)} MiB",
         title="",
         box=box.SQUARE,
     )
 
-    # GPU Processes
     process_table = Table(box=box.SIMPLE, expand=True)
     process_table.add_column("PID", style="cyan")
     process_table.add_column("Name", style="magenta")
@@ -283,9 +319,6 @@ def main():
                 processes += get_amd_processes()
             if tools["intel"]:
                 processes += []
-
-            # avg_util = sum([g["gpu_util"] for g in gpus]) / max(1, len(gpus))
-            # history.append(avg_util)
 
             table, info, proc_table = create_table(gpus, processes)
             layout = Table.grid(expand=True)
