@@ -1,0 +1,47 @@
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "gputop"
+dynamic = ["version"]
+description = "Real-time GPU monitoring tool"
+authors = [
+    {name = "Ivan Shivalov", email = "ivansivalov396@gmail.com"},
+]
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.8"
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+]
+
+dependencies = [
+    "rich",
+    "psutil",
+]
+
+[project.urls]
+Homepage = "https://github.com/intexcor/gputop"
+Repository = "https://github.com/intexcor/gputop"
+Issues = "https://github.com/intexcor/gputop/issues"
+
+[project.scripts]
+gputop = "gputop.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["gputop*"]
+exclude = ["tests*"]
+
+[tool.setuptools.dynamic]
+version = {attr = "gputop.__version__"}
