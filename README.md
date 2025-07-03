@@ -3,3 +3,5 @@
 Real-time GPU monitoring tool for NVIDIA, AMD, and Intel GPUs.
 
 ## Installation
+
+pip install gputop
