@@ -272,7 +272,7 @@ def create_table(
             str(gpu["name"]),
             str(gpu["gpu_util"]),
             str(gpu["temp"]),
-            f"{gpu['power']:.1f}",
+            f"{gpu['power']:.1f}" if isinstance(gpu['power'], float) else gpu['power'],
             mem_str
         )
 

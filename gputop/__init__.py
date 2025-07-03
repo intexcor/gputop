@@ -2,7 +2,7 @@
 GPUTOP - Real-time GPU monitoring tool
 """
 
-__version__ = "0.1.9"
+__version__ = "0.2.0"
 __package_name__ = "GPUTOP"
 
 from .cli import main
