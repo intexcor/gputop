@@ -13,10 +13,16 @@ from rich.panel import Panel
 from rich.text import Text
 from rich import box
 import psutil
+import platform
+import shutil
 
 console: Console = Console()
 
-from . import __version__, __package_name__
+try:
+    from . import __version__, __package_name__
+except ImportError:
+    __version__ = "0"
+    __package_name__ = "GPUTOP"
 
 
 def safe_float(value, default=None):
@@ -278,8 +284,37 @@ def create_table(
 
     cpu: float = psutil.cpu_percent()
     ram: psutil._pslinux.svmem = psutil.virtual_memory()
-    info_panel: Panel = Panel(
-        f"[cyan]CPU Load:[/] {cpu}%\n[cyan]RAM Used:[/] {ram.used // (1024 ** 2)} MiB / {ram.total // (1024 ** 2)} MiB",
+    cpu_count: int = psutil.cpu_count(logical=True)
+    kernel_version: str = platform.release()
+    os_name: str = platform.system()
+    disk: shutil.disk_usage = shutil.disk_usage("/")
+    disk_total_gb: int = disk.total // (1024 ** 3)
+    disk_used_gb: int = disk_total_gb -  disk.free // (1024 ** 3)
+
+
+    sys_table = Table.grid(expand=True)
+
+    # Добавляем 3 колонки
+    sys_table.add_column(justify="left", ratio=1)
+    sys_table.add_column(justify="center", ratio=1)
+    sys_table.add_column(justify="right", ratio=1)
+
+    # Первая строка: OS, CPU Cores, RAM Used
+    sys_table.add_row(
+        f"[cyan]OS:[/] {os_name}",
+        f"[cyan]CPU Cores:[/] {cpu_count}",
+        f"[cyan]RAM Used:[/] {ram.used // (1024 ** 2)} MiB / {ram.total // (1024 ** 2)} MiB"
+    )
+
+    # Вторая строка: Kernel, CPU Load, Disk Used
+    sys_table.add_row(
+        f"[cyan]Kernel:[/] {kernel_version}",
+        f"[cyan]CPU Load:[/] {cpu:.1f}%",
+        f"[cyan]Disk Used:[/] {disk_used_gb} GB / {disk_total_gb} GB"
+    )
+
+    info_panel = Panel(
+        sys_table,
         title="",
         box=box.SQUARE,
     )
@@ -303,7 +338,6 @@ def create_table(
     )
 
     return table, info_panel, process_panel
-
 
 def run_monitor() -> None:
     tools: Dict[str, bool] = detect_tools()
